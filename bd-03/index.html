@@ -1,0 +1,1715 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>GameEngine ES5 — Sweetie-16 Procedural 2D Engine</title>
+  <style>
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+      user-select: none;
+      -webkit-user-select: none;
+    }
+
+    html, body {
+      width: 100%;
+      height: 100%;
+      background-color: #1a1c2c;
+      color: #f4f4f4;
+      font-family: "Courier New", Courier, monospace;
+      overflow: hidden;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+    }
+
+    #viewport-shell {
+      width: 100%;
+      height: 100%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 8px;
+    }
+
+    canvas#engine-canvas {
+      display: block;
+      background-color: #1a1c2c;
+      border: 3px solid #333c57;
+      box-shadow: 0 12px 40px rgba(0, 0, 0, 0.65), 0 0 0 1px #566c86;
+      image-rendering: -moz-crisp-edges;
+      image-rendering: -webkit-crisp-edges;
+      image-rendering: pixelated;
+      image-rendering: crisp-edges;
+      cursor: crosshair;
+      touch-action: none;
+    }
+  </style>
+</head>
+<body>
+  <div id="viewport-shell">
+    <canvas id="engine-canvas" width="640" height="360"></canvas>
+  </div>
+
+  <script>
+    /* =========================================================================
+       PURE ES5 PROCEDURAL IN-CANVAS 2D GAME ENGINE (SWEETIE-16 EDITION)
+       Strict ES5: var, function, IIFEs, zero ES6+ features, zero dependencies.
+       ========================================================================= */
+
+    var GameEngine = (function () {
+      "use strict";
+
+      /* -----------------------------------------------------------------------
+         1. GameEngine.Palette — Exact 16-color Sweetie-16 Palette by GrafxKid
+         ----------------------------------------------------------------------- */
+      var Palette = (function () {
+        var colors = [
+          "#1a1c2c", // 0: BLACK
+          "#5d275d", // 1: PURPLE
+          "#b13e53", // 2: RED
+          "#ef7d57", // 3: ORANGE
+          "#ffcd75", // 4: YELLOW
+          "#a7f070", // 5: LIGHT_GREEN
+          "#38b764", // 6: GREEN
+          "#257179", // 7: DARK_TEAL
+          "#29366f", // 8: DARK_BLUE
+          "#3b5dc9", // 9: BLUE
+          "#41a6f6", // 10: LIGHT_BLUE
+          "#73eff7", // 11: CYAN
+          "#f4f4f4", // 12: WHITE
+          "#94b0c2", // 13: LIGHT_GRAY
+          "#566c86", // 14: GRAY
+          "#333c57"  // 15: DARK_GRAY
+        ];
+
+        var names = [
+          "BLACK", "PURPLE", "RED", "ORANGE",
+          "YELLOW", "LIGHT_GREEN", "GREEN", "DARK_TEAL",
+          "DARK_BLUE", "BLUE", "LIGHT_BLUE", "CYAN",
+          "WHITE", "LIGHT_GRAY", "GRAY", "DARK_GRAY"
+        ];
+
+        var api = {
+          COLORS: colors,
+          NAMES: names,
+          COUNT: 16,
+          BLACK: 0,
+          PURPLE: 1,
+          RED: 2,
+          ORANGE: 3,
+          YELLOW: 4,
+          LIGHT_GREEN: 5,
+          GREEN: 6,
+          DARK_TEAL: 7,
+          DARK_BLUE: 8,
+          BLUE: 9,
+          LIGHT_BLUE: 10,
+          CYAN: 11,
+          WHITE: 12,
+          LIGHT_GRAY: 13,
+          GRAY: 14,
+          DARK_GRAY: 15,
+          get: function (idxOrHex) {
+            if (typeof idxOrHex === "string") {
+              return idxOrHex;
+            }
+            var i = (idxOrHex | 0);
+            if (i < 0) { i = 0; }
+            if (i > 15) { i = 15; }
+            return colors[i];
+          }
+        };
+
+        return api;
+      })();
+
+      /* -----------------------------------------------------------------------
+         2. GameEngine.Math — Procedural 2D Math & Collision Utilities
+         ----------------------------------------------------------------------- */
+      var EngineMath = (function () {
+        return {
+          PI: Math.PI,
+          TAU: Math.PI * 2,
+
+          clamp: function (val, min, max) {
+            if (val < min) { return min; }
+            if (val > max) { return max; }
+            return val;
+          },
+
+          lerp: function (a, b, t) {
+            return a + (b - a) * t;
+          },
+
+          distSq: function (x1, y1, x2, y2) {
+            var dx = x2 - x1;
+            var dy = y2 - y1;
+            return dx * dx + dy * dy;
+          },
+
+          dist: function (x1, y1, x2, y2) {
+            var dx = x2 - x1;
+            var dy = y2 - y1;
+            return Math.sqrt(dx * dx + dy * dy);
+          },
+
+          angle: function (x1, y1, x2, y2) {
+            return Math.atan2(y2 - y1, x2 - x1);
+          },
+
+          randRange: function (min, max) {
+            return min + Math.random() * (max - min);
+          },
+
+          randInt: function (min, max) {
+            return Math.floor(min + Math.random() * (max - min + 1));
+          },
+
+          rectIntersect: function (ax, ay, aw, ah, bx, by, bw, bh) {
+            return ax < bx + bw &&
+                   ax + aw > bx &&
+                   ay < by + bh &&
+                   ay + ah > by;
+          },
+
+          circleIntersect: function (ax, ay, ar, bx, by, br) {
+            var rSum = ar + br;
+            var dx = bx - ax;
+            var dy = by - ay;
+            return (dx * dx + dy * dy) <= (rSum * rSum);
+          },
+
+          pointInRect: function (px, py, rx, ry, rw, rh) {
+            return px >= rx && px <= rx + rw && py >= ry && py <= ry + rh;
+          }
+        };
+      })();
+
+      /* -----------------------------------------------------------------------
+         3. GameEngine.Input — Keyboard & Logical-Coordinate Mouse Handling
+         ----------------------------------------------------------------------- */
+      var Input = (function () {
+        var keysDown = {};
+        var keysPressed = {};
+        var keysReleased = {};
+
+        var preventKeys = {
+          "ArrowUp": true,
+          "ArrowDown": true,
+          "ArrowLeft": true,
+          "ArrowRight": true,
+          "Space": true,
+          " ": true
+        };
+
+        function normalizeKey(e) {
+          if (e.code) { return e.code; }
+          return e.key || String(e.keyCode);
+        }
+
+        function normalizeAlias(e) {
+          return e.key ? e.key.toLowerCase() : "";
+        }
+
+        var Keyboard = {
+          _init: function () {
+            window.addEventListener("keydown", function (e) {
+              var code = normalizeKey(e);
+              var alias = normalizeAlias(e);
+              if (preventKeys[code] || preventKeys[e.key]) {
+                e.preventDefault();
+              }
+              if (!keysDown[code]) {
+                keysPressed[code] = true;
+              }
+              keysDown[code] = true;
+
+              if (alias) {
+                if (!keysDown[alias]) {
+                  keysPressed[alias] = true;
+                }
+                keysDown[alias] = true;
+              }
+            }, false);
+
+            window.addEventListener("keyup", function (e) {
+              var code = normalizeKey(e);
+              var alias = normalizeAlias(e);
+              keysDown[code] = false;
+              keysReleased[code] = true;
+              if (alias) {
+                keysDown[alias] = false;
+                keysReleased[alias] = true;
+              }
+            }, false);
+
+            window.addEventListener("blur", function () {
+              keysDown = {};
+              keysPressed = {};
+              keysReleased = {};
+            }, false);
+          },
+
+          down: function (key) {
+            return !!keysDown[key];
+          },
+
+          pressed: function (key) {
+            return !!keysPressed[key];
+          },
+
+          released: function (key) {
+            return !!keysReleased[key];
+          },
+
+          _endFrame: function () {
+            keysPressed = {};
+            keysReleased = {};
+          }
+        };
+
+        var Mouse = {
+          x: 0,
+          y: 0,
+          dx: 0,
+          dy: 0,
+          down: false,
+          pressed: false,
+          released: false,
+          rightDown: false,
+          rightPressed: false,
+          wheel: 0,
+          _canvas: null,
+          _logicalW: 640,
+          _logicalH: 360,
+
+          _updatePos: function (clientX, clientY) {
+            if (!this._canvas) { return; }
+            var rect = this._canvas.getBoundingClientRect();
+            if (rect.width <= 0 || rect.height <= 0) { return; }
+            var scaleX = this._logicalW / rect.width;
+            var scaleY = this._logicalH / rect.height;
+            var nx = (clientX - rect.left) * scaleX;
+            var ny = (clientY - rect.top) * scaleY;
+            nx = EngineMath.clamp(nx, 0, this._logicalW);
+            ny = EngineMath.clamp(ny, 0, this._logicalH);
+            this.dx += (nx - this.x);
+            this.dy += (ny - this.y);
+            this.x = nx;
+            this.y = ny;
+          },
+
+          _init: function (canvas, logicalW, logicalH) {
+            var self = this;
+            this._canvas = canvas;
+            this._logicalW = logicalW;
+            this._logicalH = logicalH;
+            this.x = logicalW * 0.5;
+            this.y = logicalH * 0.5;
+
+            window.addEventListener("mousemove", function (e) {
+              self._updatePos(e.clientX, e.clientY);
+            }, false);
+
+            canvas.addEventListener("mousedown", function (e) {
+              self._updatePos(e.clientX, e.clientY);
+              if (e.button === 0) {
+                if (!self.down) { self.pressed = true; }
+                self.down = true;
+              } else if (e.button === 2) {
+                if (!self.rightDown) { self.rightPressed = true; }
+                self.rightDown = true;
+              }
+            }, false);
+
+            window.addEventListener("mouseup", function (e) {
+              self._updatePos(e.clientX, e.clientY);
+              if (e.button === 0) {
+                if (self.down) { self.released = true; }
+                self.down = false;
+              } else if (e.button === 2) {
+                self.rightDown = false;
+              }
+            }, false);
+
+            canvas.addEventListener("contextmenu", function (e) {
+              e.preventDefault();
+            }, false);
+
+            canvas.addEventListener("wheel", function (e) {
+              e.preventDefault();
+              self.wheel += (e.deltaY > 0 ? 1 : (e.deltaY < 0 ? -1 : 0));
+            }, { passive: false });
+
+            // Touch support mapped seamlessly to logical Mouse API
+            canvas.addEventListener("touchstart", function (e) {
+              e.preventDefault();
+              if (e.touches && e.touches.length > 0) {
+                self._updatePos(e.touches[0].clientX, e.touches[0].clientY);
+                if (!self.down) { self.pressed = true; }
+                self.down = true;
+              }
+            }, { passive: false });
+
+            canvas.addEventListener("touchmove", function (e) {
+              e.preventDefault();
+              if (e.touches && e.touches.length > 0) {
+                self._updatePos(e.touches[0].clientX, e.touches[0].clientY);
+              }
+            }, { passive: false });
+
+            canvas.addEventListener("touchend", function (e) {
+              e.preventDefault();
+              if (self.down) { self.released = true; }
+              self.down = false;
+            }, { passive: false });
+          },
+
+          _endFrame: function () {
+            this.dx = 0;
+            this.dy = 0;
+            this.pressed = false;
+            this.released = false;
+            this.rightPressed = false;
+            this.wheel = 0;
+          }
+        };
+
+        return {
+          Keyboard: Keyboard,
+          Mouse: Mouse
+        };
+      })();
+
+      /* -----------------------------------------------------------------------
+         4. GameEngine.Graphics — Crisp Pixel Primitives, Sprite Matrix & Font
+         ----------------------------------------------------------------------- */
+      var Graphics = (function () {
+        var ctx = null;
+        var width = 640;
+        var height = 360;
+        var shakeMag = 0;
+        var shakeTime = 0;
+        var shakeMaxTime = 0;
+        var shakeX = 0;
+        var shakeY = 0;
+        var spriteCache = {};
+
+        // 5x7 Crisp Bitmap Pixel Font (A-Z, 0-9, punctuation)
+        var FONT_5X7 = {
+          "A": ["01110","10001","10001","11111","10001","10001","10001"],
+          "B": ["11110","10001","10001","11110","10001","10001","11110"],
+          "C": ["01110","10001","10000","10000","10000","10001","01110"],
+          "D": ["11100","10010","10001","10001","10001","10010","11100"],
+          "E": ["11111","10000","10000","11110","10000","10000","11111"],
+          "F": ["11111","10000","10000","11110","10000","10000","10000"],
+          "G": ["01110","10001","10000","10111","10001","10001","01111"],
+          "H": ["10001","10001","10001","11111","10001","10001","10001"],
+          "I": ["11111","00100","00100","00100","00100","00100","11111"],
+          "J": ["00111","00010","00010","00010","10010","10010","01100"],
+          "K": ["10001","10010","10100","11000","10100","10010","10001"],
+          "L": ["10000","10000","10000","10000","10000","10000","11111"],
+          "M": ["10001","11011","10101","10101","10001","10001","10001"],
+          "N": ["10001","11001","10101","10011","10001","10001","10001"],
+          "O": ["01110","10001","10001","10001","10001","10001","01110"],
+          "P": ["11110","10001","10001","11110","10000","10000","10000"],
+          "Q": ["01110","10001","10001","10001","10101","10010","01101"],
+          "R": ["11110","10001","10001","11110","10100","10010","10001"],
+          "S": ["01111","10000","10000","01110","00001","00001","11110"],
+          "T": ["11111","00100","00100","00100","00100","00100","00100"],
+          "U": ["10001","10001","10001","10001","10001","10001","01110"],
+          "V": ["10001","10001","10001","10001","10001","01010","00100"],
+          "W": ["10001","10001","10001","10101","10101","11011","10001"],
+          "X": ["10001","10001","01010","00100","01010","10001","10001"],
+          "Y": ["10001","10001","01010","00100","00100","00100","00100"],
+          "Z": ["11111","00001","00010","00100","01000","10000","11111"],
+          "0": ["01110","10011","10101","10101","11001","10001","01110"],
+          "1": ["00100","01100","00100","00100","00100","00100","01110"],
+          "2": ["01110","10001","00001","00110","01000","10000","11111"],
+          "3": ["11110","00001","00001","01110","00001","00001","11110"],
+          "4": ["00010","00110","01010","10010","11111","00010","00010"],
+          "5": ["11111","10000","11110","00001","00001","10001","01110"],
+          "6": ["01110","10000","10000","11110","10001","10001","01110"],
+          "7": ["11111","00001","00010","00100","01000","01000","01000"],
+          "8": ["01110","10001","10001","01110","10001","10001","01110"],
+          "9": ["01110","10001","10001","01111","00001","00001","01110"],
+          " ": ["00000","00000","00000","00000","00000","00000","00000"],
+          ":": ["00000","00100","00100","00000","00100","00100","00000"],
+          ".": ["00000","00000","00000","00000","00000","01100","01100"],
+          ",": ["00000","00000","00000","00000","00000","00100","01000"],
+          "-": ["00000","00000","00000","11111","00000","00000","00000"],
+          "+": ["00000","00100","00100","11111","00100","00100","00000"],
+          "/": ["00001","00010","00010","00100","01000","01000","10000"],
+          "!": ["00100","00100","00100","00100","00100","00000","00100"],
+          "?": ["01110","10001","00010","00100","00100","00000","00100"],
+          "(": ["00010","00100","01000","01000","01000","00100","00010"],
+          ")": ["01000","00100","00010","00010","00010","00100","01000"],
+          "[": ["01110","01000","01000","01000","01000","01000","01110"],
+          "]": ["01110","00010","00010","00010","00010","00010","01110"],
+          "<": ["00010","00100","01000","10000","01000","00100","00010"],
+          ">": ["01000","00100","00010","00001","00010","00100","01000"],
+          "=": ["00000","00000","11111","00000","11111","00000","00000"],
+          "%": ["11001","11010","00100","00100","01011","10011","00000"],
+          "#": ["01010","11111","01010","01010","11111","01010","00000"],
+          "_": ["00000","00000","00000","00000","00000","00000","11111"],
+          "*": ["00000","00100","10101","01110","10101","00100","00000"]
+        };
+
+        var HEX_MAP = {
+          "0": 0, "1": 1, "2": 2, "3": 3,
+          "4": 4, "5": 5, "6": 6, "7": 7,
+          "8": 8, "9": 9, "a": 10, "A": 10,
+          "b": 11, "B": 11, "c": 12, "C": 12,
+          "d": 13, "D": 13, "e": 14, "E": 14,
+          "f": 15, "F": 15
+        };
+
+        function bakeSprite(key, matrix, scale, flipX) {
+          var cacheId = key + "_" + scale + "_" + (flipX ? "1" : "0");
+          if (spriteCache[cacheId]) {
+            return spriteCache[cacheId];
+          }
+          var rows = matrix.length;
+          var cols = rows > 0 ? matrix[0].length : 0;
+          var off = document.createElement("canvas");
+          off.width = cols * scale;
+          off.height = rows * scale;
+          var octx = off.getContext("2d");
+          octx.imageSmoothingEnabled = false;
+
+          var r, c, ch, idx, drawC;
+          for (r = 0; r < rows; r++) {
+            var line = matrix[r];
+            for (c = 0; c < cols; c++) {
+              ch = line.charAt(c);
+              if (ch === "." || ch === " " || ch === "-") { continue; }
+              idx = HEX_MAP[ch];
+              if (idx !== undefined) {
+                octx.fillStyle = Palette.COLORS[idx];
+                drawC = flipX ? (cols - 1 - c) : c;
+                octx.fillRect(drawC * scale, r * scale, scale, scale);
+              }
+            }
+          }
+          spriteCache[cacheId] = off;
+          return off;
+        }
+
+        return {
+          _init: function (context2d, w, h) {
+            ctx = context2d;
+            width = w;
+            height = h;
+            ctx.imageSmoothingEnabled = false;
+          },
+
+          getWidth: function () { return width; },
+          getHeight: function () { return height; },
+          getContext: function () { return ctx; },
+
+          screenShake: function (magnitude, duration) {
+            if (magnitude >= shakeMag || shakeTime <= 0) {
+              shakeMag = magnitude;
+              shakeTime = duration;
+              shakeMaxTime = duration > 0 ? duration : 0.001;
+            }
+          },
+
+          _updateShake: function (dt) {
+            if (shakeTime > 0) {
+              shakeTime -= dt;
+              if (shakeTime <= 0) {
+                shakeTime = 0;
+                shakeMag = 0;
+                shakeX = 0;
+                shakeY = 0;
+              } else {
+                var ratio = shakeTime / shakeMaxTime;
+                var cur = shakeMag * ratio;
+                shakeX = Math.round(EngineMath.randRange(-cur, cur));
+                shakeY = Math.round(EngineMath.randRange(-cur, cur));
+              }
+            } else {
+              shakeX = 0;
+              shakeY = 0;
+            }
+          },
+
+          _beginFrame: function () {
+            ctx.save();
+            ctx.imageSmoothingEnabled = false;
+            ctx.translate(shakeX, shakeY);
+          },
+
+          _endFrame: function () {
+            ctx.restore();
+          },
+
+          clear: function (colorIdx) {
+            ctx.fillStyle = Palette.get(colorIdx !== undefined ? colorIdx : 0);
+            ctx.fillRect(-16, -16, width + 32, height + 32);
+          },
+
+          pixel: function (x, y, colorIdx) {
+            ctx.fillStyle = Palette.get(colorIdx);
+            ctx.fillRect(Math.round(x), Math.round(y), 1, 1);
+          },
+
+          rect: function (x, y, w, h, colorIdx) {
+            ctx.fillStyle = Palette.get(colorIdx);
+            ctx.fillRect(Math.round(x), Math.round(y), Math.round(w), Math.round(h));
+          },
+
+          rectOutline: function (x, y, w, h, colorIdx, lineWidth) {
+            var lw = lineWidth || 1;
+            var rx = Math.round(x);
+            var ry = Math.round(y);
+            var rw = Math.round(w);
+            var rh = Math.round(h);
+            ctx.fillStyle = Palette.get(colorIdx);
+            ctx.fillRect(rx, ry, rw, lw);
+            ctx.fillRect(rx, ry + rh - lw, rw, lw);
+            ctx.fillRect(rx, ry, lw, rh);
+            ctx.fillRect(rx + rw - lw, ry, lw, rh);
+          },
+
+          circle: function (cx, cy, r, colorIdx) {
+            ctx.fillStyle = Palette.get(colorIdx);
+            ctx.beginPath();
+            ctx.arc(Math.round(cx), Math.round(cy), Math.max(0.5, r), 0, EngineMath.TAU);
+            ctx.fill();
+          },
+
+          circleOutline: function (cx, cy, r, colorIdx, lineWidth) {
+            ctx.strokeStyle = Palette.get(colorIdx);
+            ctx.lineWidth = lineWidth || 1;
+            ctx.beginPath();
+            ctx.arc(Math.round(cx), Math.round(cy), Math.max(0.5, r), 0, EngineMath.TAU);
+            ctx.stroke();
+          },
+
+          line: function (x1, y1, x2, y2, colorIdx, lineWidth) {
+            ctx.strokeStyle = Palette.get(colorIdx);
+            ctx.lineWidth = lineWidth || 1;
+            ctx.beginPath();
+            ctx.moveTo(Math.round(x1) + 0.5, Math.round(y1) + 0.5);
+            ctx.lineTo(Math.round(x2) + 0.5, Math.round(y2) + 0.5);
+            ctx.stroke();
+          },
+
+          // Renders an array of hex-indexed strings ('0'..'f', '.' transparent)
+          sprite: function (matrix, x, y, scale, flipX, cacheKey) {
+            var s = scale || 1;
+            var key = cacheKey || matrix.join("|");
+            var baked = bakeSprite(key, matrix, s, !!flipX);
+            ctx.drawImage(baked, Math.round(x), Math.round(y));
+          },
+
+          measureText: function (str, scale) {
+            var s = scale || 1;
+            var textStr = String(str);
+            if (textStr.length === 0) { return 0; }
+            return textStr.length * (6 * s) - s;
+          },
+
+          text: function (str, x, y, colorIdx, scale, align, shadowColorIdx) {
+            var s = scale || 1;
+            var textStr = String(str).toUpperCase();
+            var totalW = this.measureText(textStr, s);
+            var drawX = Math.round(x);
+            var drawY = Math.round(y);
+
+            if (align === "center") {
+              drawX = Math.round(x - totalW * 0.5);
+            } else if (align === "right") {
+              drawX = Math.round(x - totalW);
+            }
+
+            if (shadowColorIdx !== undefined && shadowColorIdx !== null) {
+              this._drawGlyphRun(textStr, drawX + s, drawY + s, shadowColorIdx, s);
+            }
+            this._drawGlyphRun(textStr, drawX, drawY, colorIdx, s);
+          },
+
+          _drawGlyphRun: function (textStr, startX, startY, colorIdx, s) {
+            ctx.fillStyle = Palette.get(colorIdx);
+            var cursorX = startX;
+            var i, ch, glyph, r, c, rowStr;
+            for (i = 0; i < textStr.length; i++) {
+              ch = textStr.charAt(i);
+              glyph = FONT_5X7[ch] || FONT_5X7["?"];
+              for (r = 0; r < 7; r++) {
+                rowStr = glyph[r];
+                for (c = 0; c < 5; c++) {
+                  if (rowStr.charAt(c) === "1") {
+                    ctx.fillRect(cursorX + c * s, startY + r * s, s, s);
+                  }
+                }
+              }
+              cursorX += 6 * s;
+            }
+          }
+        };
+      })();
+
+      /* -----------------------------------------------------------------------
+         5. GameEngine.GUI — Immediate-Mode Pixel GUI Widgets (Sweetie-16)
+         ----------------------------------------------------------------------- */
+      var GUI = (function () {
+        var activeSliderId = null;
+        var toasts = [];
+
+        return {
+          _update: function (dt) {
+            if (!Input.Mouse.down) {
+              activeSliderId = null;
+            }
+            var i;
+            for (i = toasts.length - 1; i >= 0; i--) {
+              toasts[i].time -= dt;
+              if (toasts[i].time <= 0) {
+                toasts.splice(i, 1);
+              }
+            }
+          },
+
+          panel: function (x, y, w, h, title, bgIdx, borderIdx) {
+            var bg = bgIdx !== undefined ? bgIdx : Palette.DARK_BLUE;
+            var border = borderIdx !== undefined ? borderIdx : Palette.GRAY;
+
+            // Drop shadow
+            Graphics.rect(x + 2, y + 2, w, h, Palette.BLACK);
+            // Main body
+            Graphics.rect(x, y, w, h, bg);
+            // Top & left highlight bevel
+            Graphics.rect(x + 1, y + 1, w - 2, 1, Palette.LIGHT_BLUE);
+            Graphics.rect(x + 1, y + 1, 1, h - 2, Palette.GRAY);
+            // Outer border
+            Graphics.rectOutline(x, y, w, h, border, 1);
+
+            if (title) {
+              Graphics.rect(x + 1, y + 1, w - 2, 12, Palette.DARK_GRAY);
+              Graphics.rect(x + 1, y + 13, w - 2, 1, border);
+              Graphics.text(title, x + 5, y + 4, Palette.YELLOW, 1, "left", Palette.BLACK);
+            }
+          },
+
+          label: function (text, x, y, colorIdx, align, scale) {
+            Graphics.text(
+              text,
+              x,
+              y,
+              colorIdx !== undefined ? colorIdx : Palette.WHITE,
+              scale || 1,
+              align || "left",
+              Palette.BLACK
+            );
+          },
+
+          button: function (id, x, y, w, h, text, accentIdx) {
+            var mx = Input.Mouse.x;
+            var my = Input.Mouse.y;
+            var hovered = EngineMath.pointInRect(mx, my, x, y, w, h);
+            var pressed = hovered && Input.Mouse.down;
+            var clicked = hovered && Input.Mouse.released;
+
+            var baseCol = accentIdx !== undefined ? accentIdx : Palette.BLUE;
+            var fillCol = baseCol;
+            var topBevel = Palette.CYAN;
+            var botBevel = Palette.DARK_BLUE;
+            var offsetY = 0;
+
+            if (pressed) {
+              fillCol = Palette.DARK_BLUE;
+              topBevel = Palette.BLACK;
+              botBevel = Palette.BLUE;
+              offsetY = 1;
+            } else if (hovered) {
+              fillCol = Palette.LIGHT_BLUE;
+              topBevel = Palette.WHITE;
+              botBevel = baseCol;
+            }
+
+            // Shadow
+            Graphics.rect(x + 1, y + 2, w, h, Palette.BLACK);
+            // Button face
+            Graphics.rect(x, y + offsetY, w, h, fillCol);
+            // Bevels
+            Graphics.rect(x + 1, y + offsetY + 1, w - 2, 1, topBevel);
+            Graphics.rect(x + 1, y + offsetY + h - 2, w - 2, 1, botBevel);
+            // Outline
+            Graphics.rectOutline(x, y + offsetY, w, h, hovered ? Palette.WHITE : Palette.LIGHT_GRAY, 1);
+
+            var textY = y + offsetY + Math.floor((h - 7) * 0.5);
+            Graphics.text(
+              text,
+              x + Math.floor(w * 0.5),
+              textY,
+              pressed ? Palette.YELLOW : Palette.WHITE,
+              1,
+              "center",
+              Palette.BLACK
+            );
+
+            return clicked;
+          },
+
+          checkbox: function (id, x, y, labelText, checked) {
+            var boxSize = 11;
+            var totalW = boxSize + 5 + Graphics.measureText(labelText, 1);
+            var hovered = EngineMath.pointInRect(Input.Mouse.x, Input.Mouse.y, x, y, totalW, boxSize);
+            var nextVal = checked;
+
+            if (hovered && Input.Mouse.pressed) {
+              nextVal = !checked;
+            }
+
+            Graphics.rect(x, y, boxSize, boxSize, Palette.BLACK);
+            Graphics.rectOutline(x, y, boxSize, boxSize, hovered ? Palette.YELLOW : Palette.LIGHT_GRAY, 1);
+
+            if (nextVal) {
+              Graphics.rect(x + 2, y + 2, boxSize - 4, boxSize - 4, Palette.LIGHT_GREEN);
+              Graphics.rect(x + 3, y + 3, boxSize - 6, boxSize - 6, Palette.WHITE);
+            }
+
+            Graphics.text(
+              labelText,
+              x + boxSize + 5,
+              y + 2,
+              hovered ? Palette.YELLOW : Palette.WHITE,
+              1,
+              "left",
+              Palette.BLACK
+            );
+
+            return nextVal;
+          },
+
+          slider: function (id, x, y, w, minVal, maxVal, currentVal, labelText) {
+            var trackY = labelText ? y + 10 : y;
+            var trackH = 8;
+            var hitY = trackY - 3;
+            var hitH = trackH + 6;
+            var hovered = EngineMath.pointInRect(Input.Mouse.x, Input.Mouse.y, x - 2, hitY, w + 4, hitH);
+
+            if (hovered && Input.Mouse.pressed) {
+              activeSliderId = id;
+            }
+
+            var val = EngineMath.clamp(currentVal, minVal, maxVal);
+            if (activeSliderId === id && Input.Mouse.down) {
+              var t = EngineMath.clamp((Input.Mouse.x - x) / w, 0, 1);
+              val = EngineMath.lerp(minVal, maxVal, t);
+            }
+
+            if (labelText) {
+              Graphics.text(labelText, x, y, Palette.LIGHT_GRAY, 1, "left", Palette.BLACK);
+              Graphics.text(String(Math.round(val)), x + w, y, Palette.CYAN, 1, "right", Palette.BLACK);
+            }
+
+            var norm = (val - minVal) / (maxVal - minVal || 1);
+            var fillW = Math.round(w * norm);
+            var knobX = x + fillW - 3;
+
+            // Track
+            Graphics.rect(x, trackY, w, trackH, Palette.BLACK);
+            Graphics.rect(x + 1, trackY + 1, Math.max(0, fillW - 1), trackH - 2, Palette.GREEN);
+            Graphics.rectOutline(x, trackY, w, trackH, (hovered || activeSliderId === id) ? Palette.WHITE : Palette.GRAY, 1);
+
+            // Thumb
+            Graphics.rect(knobX, trackY - 2, 6, trackH + 4, (activeSliderId === id) ? Palette.YELLOW : Palette.WHITE);
+            Graphics.rectOutline(knobX, trackY - 2, 6, trackH + 4, Palette.BLACK, 1);
+
+            return val;
+          },
+
+          progressBar: function (x, y, w, h, ratio, fillIdx, bgIdx, labelText) {
+            var r = EngineMath.clamp(ratio, 0, 1);
+            var fill = fillIdx !== undefined ? fillIdx : Palette.GREEN;
+            var bg = bgIdx !== undefined ? bgIdx : Palette.BLACK;
+
+            Graphics.rect(x, y, w, h, bg);
+            var innerW = Math.round((w - 2) * r);
+            if (innerW > 0) {
+              Graphics.rect(x + 1, y + 1, innerW, h - 2, fill);
+              // Top highlight shine
+              if (h >= 5) {
+                Graphics.rect(x + 1, y + 1, innerW, 1, Palette.WHITE);
+              }
+            }
+            Graphics.rectOutline(x, y, w, h, Palette.LIGHT_GRAY, 1);
+
+            if (labelText) {
+              Graphics.text(
+                labelText,
+                x + Math.floor(w * 0.5),
+                y + Math.floor((h - 7) * 0.5),
+                Palette.WHITE,
+                1,
+                "center",
+                Palette.BLACK
+              );
+            }
+          },
+
+          toast: function (message, colorIdx, duration) {
+            toasts.push({
+              text: message,
+              color: colorIdx !== undefined ? colorIdx : Palette.YELLOW,
+              time: duration || 2.2,
+              maxTime: duration || 2.2
+            });
+            if (toasts.length > 4) {
+              toasts.shift();
+            }
+          },
+
+          _renderToasts: function (centerX, startY) {
+            var i, t, w, bx, by;
+            for (i = 0; i < toasts.length; i++) {
+              t = toasts[i];
+              w = Graphics.measureText(t.text, 1) + 14;
+              bx = Math.round(centerX - w * 0.5);
+              by = Math.round(startY + i * 16);
+              Graphics.rect(bx + 1, by + 1, w, 13, Palette.BLACK);
+              Graphics.rect(bx, by, w, 13, Palette.DARK_GRAY);
+              Graphics.rectOutline(bx, by, w, 13, t.color, 1);
+              Graphics.text(t.text, centerX, by + 3, t.color, 1, "center", Palette.BLACK);
+            }
+          }
+        };
+      })();
+
+      /* -----------------------------------------------------------------------
+         6. GameEngine.Core — Main Loop, State Lifecycle, Responsive Scaling
+         ----------------------------------------------------------------------- */
+      var Core = (function () {
+        var canvas = null;
+        var ctx = null;
+        var logicalW = 640;
+        var logicalH = 360;
+        var running = false;
+        var lastTime = 0;
+        var fps = 60;
+        var frameCount = 0;
+        var fpsTimer = 0;
+        var totalTime = 0;
+        var activeState = null;
+
+        function fitCanvasToViewport() {
+          if (!canvas) { return; }
+          var pad = 16;
+          var availW = Math.max(320, window.innerWidth - pad);
+          var availH = Math.max(180, window.innerHeight - pad);
+          var aspect = logicalW / logicalH;
+          var targetW = availW;
+          var targetH = Math.floor(targetW / aspect);
+
+          if (targetH > availH) {
+            targetH = availH;
+            targetW = Math.floor(targetH * aspect);
+          }
+
+          canvas.style.width = targetW + "px";
+          canvas.style.height = targetH + "px";
+        }
+
+        function tick(now) {
+          if (!running) { return; }
+          window.requestAnimationFrame(tick);
+
+          var rawDt = (now - lastTime) * 0.001;
+          lastTime = now;
+          // Clamp dt so tab switches never explode physics
+          var dt = EngineMath.clamp(rawDt, 0.0001, 0.05);
+          totalTime += dt;
+
+          frameCount++;
+          fpsTimer += rawDt;
+          if (fpsTimer >= 0.5) {
+            fps = Math.round(frameCount / fpsTimer);
+            frameCount = 0;
+            fpsTimer = 0;
+          }
+
+          Graphics._updateShake(dt);
+          GUI._update(dt);
+
+          if (activeState && activeState.update) {
+            activeState.update(dt, totalTime);
+          }
+
+          Graphics._beginFrame();
+          if (activeState && activeState.draw) {
+            activeState.draw(Graphics, GUI);
+          }
+          Graphics._endFrame();
+
+          Input.Keyboard._endFrame();
+          Input.Mouse._endFrame();
+        }
+
+        return {
+          init: function (canvasElement, width, height) {
+            canvas = canvasElement;
+            logicalW = width || 640;
+            logicalH = height || 360;
+            canvas.width = logicalW;
+            canvas.height = logicalH;
+
+            ctx = canvas.getContext("2d");
+            Graphics._init(ctx, logicalW, logicalH);
+            Input.Keyboard._init();
+            Input.Mouse._init(canvas, logicalW, logicalH);
+
+            fitCanvasToViewport();
+            window.addEventListener("resize", fitCanvasToViewport, false);
+          },
+
+          setState: function (stateObj) {
+            activeState = stateObj;
+            if (activeState && activeState.enter) {
+              activeState.enter();
+            }
+          },
+
+          start: function () {
+            if (running) { return; }
+            running = true;
+            lastTime = performance.now ? performance.now() : Date.now();
+            window.requestAnimationFrame(tick);
+          },
+
+          getFPS: function () {
+            return fps;
+          },
+
+          getTime: function () {
+            return totalTime;
+          }
+        };
+      })();
+
+      return {
+        Palette: Palette,
+        Math: EngineMath,
+        Input: Input,
+        Graphics: Graphics,
+        GUI: GUI,
+        Core: Core
+      };
+    })();
+
+    /* =========================================================================
+       INTERACTIVE SHOWCASE: "SWEETIE-16 ARENA"
+       Demonstrates Palette, Graphics Sprites/Text, Math, Keyboard, Mouse & GUI.
+       ========================================================================= */
+    (function () {
+      "use strict";
+
+      var P = GameEngine.Palette;
+      var M = GameEngine.Math;
+      var Kb = GameEngine.Input.Keyboard;
+      var Ms = GameEngine.Input.Mouse;
+
+      // Pixel-Art Sprite Matrices (Hex indices '0'-'f' -> Sweetie-16 palette)
+      var SPRITE_HERO_IDLE = [
+        "...aaaa...",
+        "..abbbba..",
+        "..acccca..",
+        ".acfcfcfa.",
+        ".acccccca.",
+        "..a4444a..",
+        ".a999999a.",
+        "a9a9999a9a",
+        "a4a9999a4a",
+        "..a8888a..",
+        "..a8..8a..",
+        ".a22..22a."
+      ];
+
+      var SPRITE_HERO_RUN = [
+        "...aaaa...",
+        "..abbbba..",
+        "..acccca..",
+        ".acfcfcfa.",
+        ".acccccca.",
+        "..a4444a..",
+        ".a999999a.",
+        "a9a9999a9a",
+        "a4a9999a4a",
+        "..a8888a..",
+        ".a8a..a8a.",
+        "a22....22a"
+      ];
+
+      var SPRITE_SLIME = [
+        "....6666....",
+        "..66555566..",
+        ".6555555556.",
+        "655c055c0556",
+        "655005500556",
+        "655555555556",
+        "665555555566",
+        "766666666667",
+        ".7777777777."
+      ];
+
+      var SPRITE_BRUTE = [
+        "..11222211..",
+        ".1223333221.",
+        "123342243321",
+        "123322223321",
+        "122224422221",
+        "122333333221",
+        "112222222211",
+        ".1111111111."
+      ];
+
+      var SPRITE_GEM = [
+        "...bb...",
+        "..baab..",
+        ".bacacb.",
+        "baccacab",
+        ".bacacb.",
+        "..baab..",
+        "...bb..."
+      ];
+
+      // Arena bounds (Left 444px = playable arena, Right 188px = Live Engine GUI Inspector)
+      var ARENA = {
+        x: 8,
+        y: 26,
+        w: 432,
+        h: 326
+      };
+
+      var ArenaDemo = (function () {
+        var player = null;
+        var bullets = [];
+        var enemies = [];
+        var gems = [];
+        var particles = [];
+        var floatTexts = [];
+        var floorDecals = [];
+
+        var score = 0;
+        var wave = 1;
+        var spawnTimer = 0;
+        var shakeEnabled = true;
+        var autoFire = false;
+        var showApiOverlay = false;
+        var selectedSwatch = P.CYAN;
+        var gameOver = false;
+
+        function resetGame() {
+          player = {
+            x: ARENA.x + ARENA.w * 0.5,
+            y: ARENA.y + ARENA.h * 0.5,
+            r: 9,
+            hp: 100,
+            maxHp: 100,
+            speed: 125,
+            fireCooldown: 0,
+            invuln: 0,
+            flipX: false,
+            animTimer: 0
+          };
+          bullets = [];
+          enemies = [];
+          gems = [];
+          particles = [];
+          floatTexts = [];
+          score = 0;
+          wave = 1;
+          spawnTimer = 0.5;
+          gameOver = false;
+
+          generateFloorTiles();
+          var i;
+          for (i = 0; i < 4; i++) {
+            spawnEnemy(false);
+          }
+          for (i = 0; i < 5; i++) {
+            spawnGem(
+              M.randRange(ARENA.x + 24, ARENA.x + ARENA.w - 24),
+              M.randRange(ARENA.y + 24, ARENA.y + ARENA.h - 24)
+            );
+          }
+          GameEngine.GUI.toast("ARENA READY! WASD + MOUSE TO PLAY", P.CYAN, 2.5);
+        }
+
+        function generateFloorTiles() {
+          floorDecals = [];
+          var i;
+          for (i = 0; i < 36; i++) {
+            floorDecals.push({
+              x: M.randInt(ARENA.x + 12, ARENA.x + ARENA.w - 16),
+              y: M.randInt(ARENA.y + 12, ARENA.y + ARENA.h - 16),
+              w: M.randInt(2, 6),
+              h: M.randInt(2, 4),
+              col: (i % 3 === 0) ? P.DARK_BLUE : P.BLACK
+            });
+          }
+        }
+
+        function spawnBurst(x, y, count, colA, colB, speedMax) {
+          var i, ang, spd;
+          for (i = 0; i < count; i++) {
+            ang = M.randRange(0, M.TAU);
+            spd = M.randRange(20, speedMax || 110);
+            particles.push({
+              x: x,
+              y: y,
+              vx: Math.cos(ang) * spd,
+              vy: Math.sin(ang) * spd,
+              life: M.randRange(0.2, 0.55),
+              maxLife: 0.55,
+              size: M.randInt(1, 3),
+              col: (i % 2 === 0) ? colA : colB
+            });
+          }
+        }
+
+        function addFloatText(x, y, str, col) {
+          floatTexts.push({
+            x: x,
+            y: y,
+            text: str,
+            col: col,
+            life: 0.75
+          });
+        }
+
+        function spawnGem(x, y) {
+          gems.push({
+            x: x,
+            y: y,
+            r: 7,
+            bob: M.randRange(0, M.TAU)
+          });
+        }
+
+        function spawnEnemy(isBrute) {
+          var side = M.randInt(0, 3);
+          var sx, sy;
+          if (side === 0) {
+            sx = M.randRange(ARENA.x + 16, ARENA.x + ARENA.w - 16);
+            sy = ARENA.y + 16;
+          } else if (side === 1) {
+            sx = M.randRange(ARENA.x + 16, ARENA.x + ARENA.w - 16);
+            sy = ARENA.y + ARENA.h - 16;
+          } else if (side === 2) {
+            sx = ARENA.x + 16;
+            sy = M.randRange(ARENA.y + 16, ARENA.y + ARENA.h - 16);
+          } else {
+            sx = ARENA.x + ARENA.w - 16;
+            sy = M.randRange(ARENA.y + 16, ARENA.y + ARENA.h - 16);
+          }
+
+          enemies.push({
+            x: sx,
+            y: sy,
+            r: isBrute ? 11 : 9,
+            hp: isBrute ? 4 : 2,
+            maxHp: isBrute ? 4 : 2,
+            speed: isBrute ? M.randRange(32, 46) : M.randRange(48, 72),
+            brute: !!isBrute,
+            hitFlash: 0,
+            wobble: M.randRange(0, M.TAU)
+          });
+          spawnBurst(sx, sy, 8, P.PURPLE, P.RED, 70);
+        }
+
+        function fireBullet() {
+          var aimX = M.clamp(Ms.x, ARENA.x, ARENA.x + ARENA.w);
+          var aimY = M.clamp(Ms.y, ARENA.y, ARENA.y + ARENA.h);
+          var ang = M.angle(player.x, player.y, aimX, aimY);
+          var spd = 290;
+          bullets.push({
+            x: player.x + Math.cos(ang) * 10,
+            y: player.y + Math.sin(ang) * 10,
+            vx: Math.cos(ang) * spd,
+            vy: Math.sin(ang) * spd,
+            r: 3,
+            life: 1.4
+          });
+          player.fireCooldown = 0.14;
+          if (shakeEnabled) {
+            GameEngine.Graphics.screenShake(1.5, 0.05);
+          }
+        }
+
+        return {
+          enter: function () {
+            resetGame();
+          },
+
+          update: function (dt, totalTime) {
+            // Toggle API Reference Overlay with Tab or H
+            if (Kb.pressed("Tab") || Kb.pressed("KeyH") || Kb.pressed("h")) {
+              showApiOverlay = !showApiOverlay;
+            }
+
+            if (showApiOverlay) {
+              return;
+            }
+
+            if (gameOver) {
+              if (Kb.pressed("Space") || Kb.pressed("KeyR") || Kb.pressed("r")) {
+                resetGame();
+              }
+              return;
+            }
+
+            // 1. Player Movement (WASD or Arrow Keys)
+            var ix = 0;
+            var iy = 0;
+            if (Kb.down("KeyA") || Kb.down("ArrowLeft") || Kb.down("a")) { ix -= 1; }
+            if (Kb.down("KeyD") || Kb.down("ArrowRight") || Kb.down("d")) { ix += 1; }
+            if (Kb.down("KeyW") || Kb.down("ArrowUp") || Kb.down("w")) { iy -= 1; }
+            if (Kb.down("KeyS") || Kb.down("ArrowDown") || Kb.down("s")) { iy += 1; }
+
+            if (ix !== 0 && iy !== 0) {
+              var inv = 0.70710678;
+              ix *= inv;
+              iy *= inv;
+            }
+
+            if (ix !== 0 || iy !== 0) {
+              player.animTimer += dt * 10;
+            } else {
+              player.animTimer = 0;
+            }
+
+            if (Ms.x < player.x) { player.flipX = true; }
+            if (Ms.x > player.x) { player.flipX = false; }
+
+            player.x += ix * player.speed * dt;
+            player.y += iy * player.speed * dt;
+            player.x = M.clamp(player.x, ARENA.x + 14, ARENA.x + ARENA.w - 14);
+            player.y = M.clamp(player.y, ARENA.y + 14, ARENA.y + ARENA.h - 14);
+
+            if (player.invuln > 0) { player.invuln -= dt; }
+            if (player.fireCooldown > 0) { player.fireCooldown -= dt; }
+
+            // 2. Shooting (Mouse click/hold inside arena, or Spacebar, or Auto-Fire toggle)
+            var mouseInArena = M.pointInRect(Ms.x, Ms.y, ARENA.x, ARENA.y, ARENA.w, ARENA.h);
+            var wantsShoot = (mouseInArena && Ms.down) || Kb.down("Space") || autoFire;
+            if (wantsShoot && player.fireCooldown <= 0) {
+              fireBullet();
+            }
+
+            // 3. Wave Spawner
+            wave = 1 + Math.floor(score / 150);
+            spawnTimer -= dt;
+            if (spawnTimer <= 0 && enemies.length < 14) {
+              spawnEnemy(Math.random() < Math.min(0.45, wave * 0.08));
+              spawnTimer = Math.max(0.75, 2.3 - wave * 0.15);
+            }
+
+            // 4. Update Bullets
+            var i, j, b, e, g, p, ft;
+            for (i = bullets.length - 1; i >= 0; i--) {
+              b = bullets[i];
+              b.x += b.vx * dt;
+              b.y += b.vy * dt;
+              b.life -= dt;
+
+              if (!M.pointInRect(b.x, b.y, ARENA.x + 4, ARENA.y + 4, ARENA.w - 8, ARENA.h - 8) || b.life <= 0) {
+                spawnBurst(b.x, b.y, 4, P.YELLOW, P.ORANGE, 50);
+                bullets.splice(i, 1);
+                continue;
+              }
+
+              // Bullet vs Enemy collision
+              var hit = false;
+              for (j = enemies.length - 1; j >= 0; j--) {
+                e = enemies[j];
+                if (M.circleIntersect(b.x, b.y, b.r, e.x, e.y, e.r)) {
+                  e.hp -= 1;
+                  e.hitFlash = 0.1;
+                  hit = true;
+                  spawnBurst(b.x, b.y, 6, P.YELLOW, P.WHITE, 80);
+
+                  if (e.hp <= 0) {
+                    var pts = e.brute ? 30 : 15;
+                    score += pts;
+                    addFloatText(e.x, e.y - 8, "+" + pts, P.YELLOW);
+                    spawnBurst(e.x, e.y, 14, e.brute ? P.RED : P.LIGHT_GREEN, P.ORANGE, 120);
+                    spawnGem(e.x, e.y);
+                    if (shakeEnabled) {
+                      GameEngine.Graphics.screenShake(e.brute ? 5 : 3, 0.14);
+                    }
+                    enemies.splice(j, 1);
+                  }
+                  break;
+                }
+              }
+              if (hit) {
+                bullets.splice(i, 1);
+              }
+            }
+
+            // 5. Update Enemies
+            for (i = enemies.length - 1; i >= 0; i--) {
+              e = enemies[i];
+              e.wobble += dt * 7;
+              if (e.hitFlash > 0) { e.hitFlash -= dt; }
+
+              var angToPlayer = M.angle(e.x, e.y, player.x, player.y);
+              e.x += Math.cos(angToPlayer) * e.speed * dt;
+              e.y += Math.sin(angToPlayer) * e.speed * dt;
+
+              // Soft separation between enemies
+              for (j = 0; j < enemies.length; j++) {
+                if (i === j) { continue; }
+                var other = enemies[j];
+                var d = M.dist(e.x, e.y, other.x, other.y);
+                var minD = e.r + other.r;
+                if (d > 0 && d < minD) {
+                  var push = (minD - d) * 0.5;
+                  var sepAng = M.angle(other.x, other.y, e.x, e.y);
+                  e.x += Math.cos(sepAng) * push;
+                  e.y += Math.sin(sepAng) * push;
+                }
+              }
+
+              // Enemy vs Player
+              if (M.circleIntersect(e.x, e.y, e.r, player.x, player.y, player.r)) {
+                if (player.invuln <= 0) {
+                  player.hp = Math.max(0, player.hp - (e.brute ? 20 : 12));
+                  player.invuln = 0.7;
+                  addFloatText(player.x, player.y - 12, "-HP", P.RED);
+                  spawnBurst(player.x, player.y, 12, P.RED, P.ORANGE, 110);
+                  if (shakeEnabled) {
+                    GameEngine.Graphics.screenShake(6, 0.22);
+                  }
+                  if (player.hp <= 0) {
+                    gameOver = true;
+                    GameEngine.GUI.toast("DEFEATED! PRESS [R] OR RETRY", P.RED, 4.0);
+                  }
+                }
+              }
+            }
+
+            // 6. Update Gems
+            for (i = gems.length - 1; i >= 0; i--) {
+              g = gems[i];
+              g.bob += dt * 5;
+              var distP = M.dist(g.x, g.y, player.x, player.y);
+              if (distP < 48) {
+                var pullAng = M.angle(g.x, g.y, player.x, player.y);
+                g.x += Math.cos(pullAng) * 140 * dt;
+                g.y += Math.sin(pullAng) * 140 * dt;
+              }
+              if (M.circleIntersect(g.x, g.y, g.r, player.x, player.y, player.r + 3)) {
+                score += 10;
+                player.hp = Math.min(player.maxHp, player.hp + 4);
+                addFloatText(g.x, g.y - 6, "+10 GEM", P.CYAN);
+                spawnBurst(g.x, g.y, 8, P.CYAN, P.WHITE, 75);
+                gems.splice(i, 1);
+                if (gems.length < 3) {
+                  spawnGem(
+                    M.randRange(ARENA.x + 24, ARENA.x + ARENA.w - 24),
+                    M.randRange(ARENA.y + 24, ARENA.y + ARENA.h - 24)
+                  );
+                }
+              }
+            }
+
+            // 7. Update Particles & Floating Combat Text
+            for (i = particles.length - 1; i >= 0; i--) {
+              p = particles[i];
+              p.x += p.vx * dt;
+              p.y += p.vy * dt;
+              p.vx *= 0.92;
+              p.vy *= 0.92;
+              p.life -= dt;
+              if (p.life <= 0) {
+                particles.splice(i, 1);
+              }
+            }
+
+            for (i = floatTexts.length - 1; i >= 0; i--) {
+              ft = floatTexts[i];
+              ft.y -= 22 * dt;
+              ft.life -= dt;
+              if (ft.life <= 0) {
+                floatTexts.splice(i, 1);
+              }
+            }
+          },
+
+          draw: function (gfx, gui) {
+            var W = gfx.getWidth();
+            var H = gfx.getHeight();
+
+            // 1. Background Clear
+            gfx.clear(P.BLACK);
+
+            // 2. Top Engine Status Header Bar
+            gfx.rect(0, 0, W, 20, P.DARK_GRAY);
+            gfx.rect(0, 20, W, 1, P.GRAY);
+            gfx.text("GAMEENGINE.JS [ES5]", 8, 6, P.YELLOW, 1, "left", P.BLACK);
+            gfx.text("SWEETIE-16 PALETTE", 158, 6, P.CYAN, 1, "left", P.BLACK);
+            gfx.text("WAVE " + wave, 315, 6, P.LIGHT_GREEN, 1, "left", P.BLACK);
+            gfx.text("SCORE: " + score, 382, 6, P.WHITE, 1, "left", P.BLACK);
+            gfx.text("FPS:" + GameEngine.Core.getFPS(), W - 8, 6, P.ORANGE, 1, "right", P.BLACK);
+
+            // 3. Playable Arena Floor & Grid
+            gfx.rect(ARENA.x, ARENA.y, ARENA.w, ARENA.h, P.DARK_TEAL);
+            gfx.rect(ARENA.x + 2, ARENA.y + 2, ARENA.w - 4, ARENA.h - 4, P.BLACK);
+
+            // Subtle 24px grid lines
+            var gx, gy;
+            for (gx = ARENA.x + 24; gx < ARENA.x + ARENA.w; gx += 24) {
+              gfx.line(gx, ARENA.y + 2, gx, ARENA.y + ARENA.h - 2, P.DARK_GRAY, 1);
+            }
+            for (gy = ARENA.y + 24; gy < ARENA.y + ARENA.h; gy += 24) {
+              gfx.line(ARENA.x + 2, gy, ARENA.x + ARENA.w - 2, gy, P.DARK_GRAY, 1);
+            }
+
+            // Floor stone decals
+            var i, d;
+            for (i = 0; i < floorDecals.length; i++) {
+              d = floorDecals[i];
+              gfx.rect(d.x, d.y, d.w, d.h, d.col);
+            }
+
+            // Arena Outer Border
+            gfx.rectOutline(ARENA.x, ARENA.y, ARENA.w, ARENA.h, P.LIGHT_GRAY, 2);
+
+            // 4. Draw Gems
+            var g, bobY;
+            for (i = 0; i < gems.length; i++) {
+              g = gems[i];
+              bobY = Math.sin(g.bob) * 2;
+              gfx.circle(g.x, g.y + 6, 5, P.DARK_BLUE);
+              gfx.sprite(SPRITE_GEM, g.x - 8, g.y - 7 + bobY, 2, false, "gem");
+            }
+
+            // 5. Draw Enemies
+            var e, spr, sprKey, bobScale;
+            for (i = 0; i < enemies.length; i++) {
+              e = enemies[i];
+              bobScale = Math.sin(e.wobble) * 1.5;
+              gfx.circle(e.x, e.y + 7, e.r - 1, P.DARK_BLUE);
+
+              if (e.hitFlash > 0) {
+                gfx.circle(e.x, e.y, e.r, P.WHITE);
+              } else {
+                spr = e.brute ? SPRITE_BRUTE : SPRITE_SLIME;
+                sprKey = e.brute ? "brute" : "slime";
+                var sw = spr[0].length * 2;
+                var sh = spr.length * 2;
+                gfx.sprite(spr, e.x - sw * 0.5, e.y - sh * 0.5 + bobScale, 2, e.x > player.x, sprKey);
+              }
+
+              // Mini HP bar above damaged enemy
+              if (e.hp < e.maxHp) {
+                gui.progressBar(e.x - 10, e.y - e.r - 7, 20, 4, e.hp / e.maxHp, P.RED, P.BLACK);
+              }
+            }
+
+            // 6. Draw Player
+            var blinkHide = (player.invuln > 0) && (Math.floor(player.invuln * 20) % 2 === 0);
+            if (!blinkHide) {
+              gfx.circle(player.x, player.y + 9, 8, P.DARK_BLUE);
+              var heroFrame = (Math.floor(player.animTimer) % 2 === 1) ? SPRITE_HERO_RUN : SPRITE_HERO_IDLE;
+              var heroKey = (Math.floor(player.animTimer) % 2 === 1) ? "hero_run" : "hero_idle";
+              gfx.sprite(heroFrame, player.x - 10, player.y - 12, 2, player.flipX, heroKey);
+            }
+
+            // Aiming laser sight & reticle inside arena
+            if (M.pointInRect(Ms.x, Ms.y, ARENA.x, ARENA.y, ARENA.w, ARENA.h) && !gameOver) {
+              var aimAng = M.angle(player.x, player.y, Ms.x, Ms.y);
+              var tipX = player.x + Math.cos(aimAng) * 16;
+              var tipY = player.y + Math.sin(aimAng) * 16;
+              gfx.line(tipX, tipY, Ms.x, Ms.y, P.DARK_GRAY, 1);
+              gfx.circleOutline(Ms.x, Ms.y, 5, P.YELLOW, 1);
+              gfx.pixel(Ms.x, Ms.y, P.RED);
+            }
+
+            // 7. Draw Bullets
+            var b;
+            for (i = 0; i < bullets.length; i++) {
+              b = bullets[i];
+              gfx.circle(b.x, b.y, b.r + 1, P.ORANGE);
+              gfx.circle(b.x, b.y, b.r - 1, P.WHITE);
+            }
+
+            // 8. Draw Particles & Floating Text
+            var p, ft;
+            for (i = 0; i < particles.length; i++) {
+              p = particles[i];
+              gfx.rect(p.x, p.y, p.size, p.size, p.col);
+            }
+            for (i = 0; i < floatTexts.length; i++) {
+              ft = floatTexts[i];
+              gfx.text(ft.text, ft.x, ft.y, ft.col, 1, "center", P.BLACK);
+            }
+
+            // Arena Controls Hint Footer
+            gfx.text("[WASD/ARROWS] MOVE   [MOUSE/SPACE] FIRE   [H] ENGINE DOCS", ARENA.x + 6, ARENA.y + ARENA.h - 11, P.LIGHT_GRAY, 1, "left", P.BLACK);
+
+            // Game Over Banner inside Arena
+            if (gameOver) {
+              var bx = ARENA.x + 76;
+              var by = ARENA.y + 110;
+              gui.panel(bx, by, 280, 96, "GAME OVER", P.DARK_BLUE, P.RED);
+              gui.label("FINAL SCORE: " + score + " (WAVE " + wave + ")", bx + 140, by + 26, P.YELLOW, "center");
+              gui.label("PRESS [R] OR CLICK BELOW", bx + 140, by + 42, P.LIGHT_GRAY, "center");
+              if (gui.button("btn_retry", bx + 75, by + 60, 130, 22, "PLAY AGAIN", P.GREEN)) {
+                resetGame();
+              }
+            }
+
+            // 9. Right-Side Immediate-Mode GUI Inspector Panel
+            var px = 448;
+            var py = 26;
+            var pw = 184;
+            var ph = 326;
+            gui.panel(px, py, pw, ph, "ENGINE GUI & PALETTE", P.DARK_BLUE, P.GRAY);
+
+            // Player Hull / HP Progress Bar
+            gui.label("PLAYER HULL INTEGRITY:", px + 8, py + 19, P.LIGHT_GRAY);
+            var hpRatio = player.hp / player.maxHp;
+            var hpColor = hpRatio > 0.5 ? P.GREEN : (hpRatio > 0.25 ? P.ORANGE : P.RED);
+            gui.progressBar(px + 8, py + 30, pw - 16, 13, hpRatio, hpColor, P.BLACK, player.hp + " / " + player.maxHp + " HP");
+
+            // Interactive Speed Slider
+            player.speed = gui.slider("sld_speed", px + 8, py + 50, pw - 16, 60, 240, player.speed, "MOVE SPEED");
+
+            // Interactive Checkboxes
+            shakeEnabled = gui.checkbox("chk_shake", px + 8, py + 74, "SCREEN SHAKE", shakeEnabled);
+            autoFire = gui.checkbox("chk_auto", px + 8, py + 90, "AUTO-FIRE TURRET", autoFire);
+
+            // Interactive Action Buttons
+            if (gui.button("btn_spawn", px + 8, py + 108, 81, 20, "+ SLIME", P.GREEN)) {
+              spawnEnemy(false);
+              gui.toast("SPAWNED SLIME!", P.LIGHT_GREEN, 1.4);
+            }
+            if (gui.button("btn_brute", px + 95, py + 108, 81, 20, "+ BRUTE", P.RED)) {
+              spawnEnemy(true);
+              gui.toast("SPAWNED BRUTE!", P.ORANGE, 1.4);
+            }
+
+            if (gui.button("btn_heal", px + 8, py + 133, 81, 20, "HEAL +25", P.DARK_TEAL)) {
+              player.hp = Math.min(player.maxHp, player.hp + 25);
+              spawnBurst(player.x, player.y, 10, P.LIGHT_GREEN, P.WHITE, 70);
+              gui.toast("REPAIRED +25 HP", P.LIGHT_GREEN, 1.4);
+            }
+            if (gui.button("btn_docs", px + 95, py + 133, 81, 20, "API DOCS", P.PURPLE)) {
+              showApiOverlay = true;
+            }
+
+            // Sweetie-16 Live Swatch Inspector (8x2 Interactive Color Grid)
+            gui.label("SWEETIE-16 SWATCHES:", px + 8, py + 161, P.YELLOW);
+            var idx, colX, colY, swW = 20, swH = 16;
+            for (idx = 0; idx < 16; idx++) {
+              colX = px + 8 + (idx % 8) * (swW + 1);
+              colY = py + 173 + Math.floor(idx / 8) * (swH + 2);
+              gfx.rect(colX, colY, swW, swH, idx);
+              var swatchHover = M.pointInRect(Ms.x, Ms.y, colX, colY, swW, swH);
+              if (swatchHover && Ms.pressed) {
+                selectedSwatch = idx;
+                gui.toast("COLOR #" + idx + ": " + P.NAMES[idx], idx === 0 ? P.WHITE : idx, 1.6);
+              }
+              if (selectedSwatch === idx || swatchHover) {
+                gfx.rectOutline(colX, colY, swW, swH, idx === P.WHITE ? P.BLACK : P.WHITE, 1);
+              }
+            }
+
+            // Selected Swatch Readout Box
+            var selHex = P.COLORS[selectedSwatch].toUpperCase();
+            var selName = P.NAMES[selectedSwatch];
+            gfx.rect(px + 8, py + 212, pw - 16, 22, P.BLACK);
+            gfx.rect(px + 11, py + 215, 16, 16, selectedSwatch);
+            gfx.rectOutline(px + 11, py + 215, 16, 16, P.WHITE, 1);
+            gui.label("#" + selectedSwatch + " " + selName, px + 32, py + 215, P.WHITE);
+            gui.label(selHex, px + 32, py + 224, P.CYAN);
+
+            // Live Input Telemetry Readout
+            gfx.rect(px + 8, py + 240, pw - 16, 52, P.BLACK);
+            gfx.rectOutline(px + 8, py + 240, pw - 16, 52, P.DARK_GRAY, 1);
+            gui.label("INPUT TELEMETRY:", px + 13, py + 245, P.ORANGE);
+            gui.label("MOUSE: " + Math.round(Ms.x) + "," + Math.round(Ms.y), px + 13, py + 256, P.LIGHT_GRAY);
+            gui.label("ENTITIES: " + (enemies.length + bullets.length + gems.length), px + 13, py + 267, P.LIGHT_GRAY);
+            gui.label("PARTICLES: " + particles.length, px + 13, py + 278, P.LIGHT_GRAY);
+
+            // Reset Arena Button
+            if (gui.button("btn_reset", px + 8, py + 298, pw - 16, 20, "RESET ARENA", P.DARK_GRAY)) {
+              resetGame();
+            }
+
+            // Render active Toast notifications over Arena top-center
+            gui._renderToasts(ARENA.x + ARENA.w * 0.5, ARENA.y + 10);
+
+            // 10. Optional In-Canvas Engine API Reference Modal
+            if (showApiOverlay) {
+              gfx.rect(24, 28, W - 48, H - 44, P.BLACK);
+              gui.panel(20, 24, W - 40, H - 40, "GAMEENGINE ES5 ARCHITECTURE & API REFERENCE", P.DARK_BLUE, P.CYAN);
+
+              var ly = 44;
+              var step = 15;
+              gui.label("1. GameEngine.Palette", 32, ly, P.YELLOW);
+              gui.label("16 Sweetie-16 colors by index (0..15) or name (e.g. Palette.CYAN)", 180, ly, P.WHITE);
+              ly += step;
+
+              gui.label("2. GameEngine.Math", 32, ly, P.YELLOW);
+              gui.label("clamp, lerp, dist, distSq, angle, randRange, randInt, intersect", 180, ly, P.WHITE);
+              ly += step;
+
+              gui.label("3. GameEngine.Input", 32, ly, P.YELLOW);
+              gui.label("Keyboard.down/pressed/released & scaled Mouse.x/y/down/pressed", 180, ly, P.WHITE);
+              ly += step;
+
+              gui.label("4. GameEngine.Graphics", 32, ly, P.YELLOW);
+              gui.label("clear, rect, rectOutline, circle, line, pixel, sprite, text, screenShake", 180, ly, P.WHITE);
+              ly += step;
+
+              gui.label("5. GameEngine.GUI", 32, ly, P.YELLOW);
+              gui.label("Immediate-mode panel, label, button, checkbox, slider, progressBar, toast", 180, ly, P.WHITE);
+              ly += step;
+
+              gui.label("6. GameEngine.Core", 32, ly, P.YELLOW);
+              gui.label("requestAnimationFrame loop, delta-time clamping, FPS, nearest-neighbor", 180, ly, P.WHITE);
+              ly += step + 8;
+
+              gfx.rect(32, ly, W - 64, 132, P.BLACK);
+              gfx.rectOutline(32, ly, W - 64, 132, P.GRAY, 1);
+              gui.label("// EXAMPLE ES5 STATE USAGE:", 42, ly + 8, P.LIGHT_GREEN);
+              gui.label("var MyGame = {", 42, ly + 22, P.CYAN);
+              gui.label("  update: function(dt) {", 42, ly + 35, P.WHITE);
+              gui.label("    if (GameEngine.Input.Keyboard.down('KeyD')) { player.x += 120 * dt; }", 42, ly + 48, P.LIGHT_GRAY);
+              gui.label("  },", 42, ly + 61, P.WHITE);
+              gui.label("  draw: function(gfx, gui) {", 42, ly + 74, P.WHITE);
+              gui.label("    gfx.clear(GameEngine.Palette.BLACK);", 42, ly + 87, P.LIGHT_GRAY);
+              gui.label("    if (gui.button('id', 10, 10, 80, 20, 'CLICK ME')) { /* ... */ }", 42, ly + 100, P.LIGHT_GRAY);
+              gui.label("  }", 42, ly + 113, P.WHITE);
+              gui.label("};", 42, ly + 122, P.CYAN);
+
+              if (gui.button("btn_close_docs", Math.floor(W * 0.5) - 70, H - 46, 140, 22, "RESUME ARENA [H]", P.GREEN)) {
+                showApiOverlay = false;
+              }
+            }
+          }
+        };
+      })();
+
+      // Boot the Engine on window load
+      window.addEventListener("load", function () {
+        var canvas = document.getElementById("engine-canvas");
+        GameEngine.Core.init(canvas, 640, 360);
+        GameEngine.Core.setState(ArenaDemo);
+        GameEngine.Core.start();
+      }, false);
+    })();
+  </script>
+</body>
+</html>

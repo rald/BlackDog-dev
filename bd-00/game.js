@@ -1,49 +1,55 @@
-import { getHexColor } from "./palette.js";
-import { createPointer } from "./pointer.js";
-import {
-  initGraphics,
-  setScale,
-  cls,
-  pset,
-  dline,
-  drect,
-  frect,
-  dcirc,
-  fcirc,
-  dtext,
-} from "./graphics.js";
+import { GameEngine } from "./GameEngine.js";
 
-const canvas = document.getElementById("canvas");
-initGraphics(canvas);
-
-canvas.width = 256;
-canvas.height = 256 + 128;
-setScale(2);
-cls();
-
-const pointer = createPointer(canvas, {
-  hideCursor: true,
-  preventContextMenu: true,
-});
-
-function loop() {
-  pointer.update();
-
-  cls(0);
-
-  for (let i = 63; i > 0; i -= 7) {
-    fcirc(63, 63, i, 10);
-    dcirc(63, 63, i, 9);
+class DemoGame extends GameEngine {
+  setup() {
+    super.setup();
+    this.px = 128;
+    this.py = 128;
+    this.speed = 120;
+    this.spacePressCount = 0;
+    this.clickPressCount = 0;
   }
 
-  dtext("Hello World", 0, 0, getHexColor(12));
-  frect(0, 0, 16, 16, 10);
-  drect(0, 0, 16, 16, 9);
-  dline(0, 0, 127, 127, 12);
+  update(dt) {
+    if (this.keyboard.isDown("ArrowLeft") || this.keyboard.isDown("KeyA")) {
+      this.px -= this.speed * dt;
+    }
+    if (this.keyboard.isDown("ArrowRight") || this.keyboard.isDown("KeyD")) {
+      this.px += this.speed * dt;
+    }
+    if (this.keyboard.isDown("ArrowUp") || this.keyboard.isDown("KeyW")) {
+      this.py -= this.speed * dt;
+    }
+    if (this.keyboard.isDown("ArrowDown") || this.keyboard.isDown("KeyS")) {
+      this.py += this.speed * dt;
+    }
+    if (this.keyboard.isDown("Space")) {
+      this.px = this.pointer.x;
+      this.py = this.pointer.y;
+    }
 
-  pset(pointer.x, pointer.y, 12);
+    if (this.keyboard.isPressed("Space")) {
+      this.spacePressCount += 1;
+      console.log("Space isPressed! Count:", this.spacePressCount);
+    }
 
-  requestAnimationFrame(loop);
+    if (this.pointer.isPressed(0)) {
+      this.clickPressCount += 1;
+      console.log("Pointer 0 isPressed at:", this.pointer.x, this.pointer.y, "Count:", this.clickPressCount);
+    }
+  }
+
+  draw() {
+    this.gfx.cls(0);
+
+    this.gfx.dtext(`SPACE PRESSED: ${this.spacePressCount}`, 8, 8, 12);
+    this.gfx.dtext(`CLICK PRESSED: ${this.clickPressCount}`, 8, 18, 11);
+
+    this.gfx.pset(this.pointer.x, this.pointer.y, 12);
+    this.gfx.drect(this.pointer.x - 2, this.pointer.y - 2, 5, 5, 4);
+    this.gfx.fcirc(this.px, this.py, 3, 6);
+  }
 }
 
-requestAnimationFrame(loop);
+const game = new DemoGame({ width: 320, height: 200, scale: 2 });
+game.start();
